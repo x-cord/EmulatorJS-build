@@ -1,0 +1,26 @@
+{
+  "emscriptenVersion": "3.1.74",
+  "emsdkDirectory": "/tmp/emsdk",
+  "sources": [
+    {
+      "directory": "compile/EmulatorJS",
+      "repo": "https://github.com/x-cord/EmulatorJS.git",
+      "branch": "xc"
+    },
+    {
+      "directory": "compile/mame2003_plus",
+      "repo": "https://github.com/x-cord/mame2003-plus-libretro.git",
+      "branch": "xc"
+    },
+    {
+      "directory": "compile/mednafen_wswan",
+      "repo": "https://github.com/x-cord/beetle-wswan-libretro.git",
+      "branch": "auto-rotation"
+    },
+    {
+      "directory": "compile/RetroArch",
+      "repo": "https://github.com/x-cord/EmulatorJS-RetroArch.git",
+      "branch": "xc"
+    }
+  ]
+}
