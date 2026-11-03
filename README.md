@@ -65,18 +65,26 @@ Or choose one target:
 ```bash
 ./build.sh frontend
 ./build.sh mame2003_plus
+./build.sh mame2003_plus-thread
 ./build.sh mednafen_wswan
 ```
 
 The frontend target does not require Emscripten. It runs `npm ci` with the
 fork's lockfile, then `node minify/minify.js`, and stages the data assets.
 
+The `mame2003_plus` target builds both the single-threaded and threaded
+variants, so MAME always has a complete standard/threaded package pair.
+`mame2003_plus-thread` rebuilds only the threaded variant. Threaded cores are
+linked with `--threads` and include the `_libretro.ww.js` worker.
+
 Each core target:
 
 1. Refreshes `compile/` from the fork repositories unless
    `SKIP_SOURCE_UPDATE=1` is set.
-2. Cleans and compiles the core with `platform=emscripten`.
-3. Copies the RetroArch source into a separate `work/<core>/RetroArch/` tree.
+2. Cleans and compiles the core with `platform=emscripten`, passing
+   `EMULATORJS_THREADS` to the core makefile.
+3. Copies the RetroArch source into a separate `work/<core>[-thread]/RetroArch/`
+   tree so variants do not share build artifacts.
 4. Links standard WebGL2 and legacy WebGL1 variants. Only that core's `.bc`
    is placed in its linker directory, since `build-emulatorjs.sh` links every
    `.bc` it finds there.
@@ -92,10 +100,12 @@ output/
   cores/
     mame2003_plus-wasm.data
     mame2003_plus-legacy-wasm.data
+    mame2003_plus-thread-wasm.data
+    mame2003_plus-thread-legacy-wasm.data
     mednafen_wswan-wasm.data
     mednafen_wswan-legacy-wasm.data
     reports/<core>.json                  # cache invalidation / default WebGL2
-    <core>-build.txt                     # source IDs, SDK version, package SHA256
+    <core>[-thread]-build.txt            # source IDs, SDK version, package SHA256
   logs/<target>-<timestamp>.log
 ```
 
@@ -109,6 +119,10 @@ other cores:
 ```bash
 ./install.sh ../EmulatorJS/data mame2003_plus
 ```
+
+The MAME install requires the threaded pair as well, so run
+`./build.sh mame2003_plus` first (or `./build.sh all`) and install all four
+MAME packages together.
 
 To install all staged output:
 

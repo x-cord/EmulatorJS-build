@@ -6,6 +6,7 @@ import { execFileSync } from 'node:child_process';
 // node scripts/package-core-wasm.mjs PACKAGES BUILD_REPO CORE_REPO DESTINATION [CORE_NAME]
 const [packages, buildRepo, coreRepo, destination] = process.argv.slice(2, 6).map(p => resolve(p));
 const coreName = process.argv[6] || 'mame2003_plus';
+const threaded = process.argv.includes('--threads');
 if (!packages || !buildRepo || !coreRepo || !destination) {
   throw new Error('Usage: node scripts/package-core-wasm.mjs PACKAGES BUILD_REPO CORE_REPO DESTINATION [CORE_NAME]');
 }
@@ -20,13 +21,15 @@ if (coreName === 'mame2003_plus') core.options = { ...core.options, useKeyboard:
 for (const variant of ['wasm', 'legacy-wasm']) {
   const scratch = mkdtempSync(join(tmpdir(), `${coreName}-package-`));
   try {
-    const name = `${coreName}-${variant}.data`;
+    const name = `${coreName}${threaded ? '-thread' : ''}-${variant}.data`;
     execFileSync('7z', ['x', '-y', `-o${scratch}`, join(packages, name)], { stdio: 'pipe' });
     writeFileSync(join(scratch, 'core.json'), `${JSON.stringify(core, null, 2)}\n`);
     copyFileSync(join(buildRepo, 'build.json'), join(scratch, 'build.json'));
     copyFileSync(join(coreRepo, core.license), join(scratch, 'license.txt'));
     const archive = join(scratch, name);
-    execFileSync('7z', ['a', '-t7z', archive, `${coreName}_libretro.js`, `${coreName}_libretro.wasm`, 'core.json', 'build.json', 'license.txt'], { cwd: scratch, stdio: 'pipe' });
+    const members = [`${coreName}_libretro.js`, `${coreName}_libretro.wasm`, 'core.json', 'build.json', 'license.txt'];
+    if (threaded) members.push(`${coreName}_libretro.ww.js`);
+    execFileSync('7z', ['a', '-t7z', archive, ...members], { cwd: scratch, stdio: 'pipe' });
     copyFileSync(archive, join(destination, name));
     console.log(`Installed ${join(destination, name)} with core metadata`);
   } finally {

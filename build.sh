@@ -2,20 +2,20 @@
 set -euo pipefail
 
 ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
-if [[ "${SKIP_SOURCE_UPDATE:-0}" != 1 ]]; then
-  node "$ROOT/scripts/restore-sources.mjs"
-fi
 TARGET="${1:-all}"
 case "$TARGET" in
-  frontend|mame2003_plus|mednafen_wswan|all) ;;
+  frontend|mame2003_plus|mame2003_plus-thread|mednafen_wswan|all) ;;
   -h|--help)
-    printf 'Usage: %s [frontend|mame2003_plus|mednafen_wswan|all]\n' "$0"
-    printf 'Environment: JOBS (default 8), EMSDK_DIR (default /tmp/emsdk)\n'
+    printf 'Usage: %s [frontend|mame2003_plus|mame2003_plus-thread|mednafen_wswan|all]\n' "$0"
+    printf 'Environment: JOBS (default 8), EMSDK_DIR (default /tmp/emsdk), SKIP_SOURCE_UPDATE=1\n'
     exit 0 ;;
   *) printf 'Unknown target: %s\n' "$TARGET" >&2; exit 1 ;;
 esac
 JOBS="${JOBS:-8}"
 [[ "$JOBS" =~ ^[1-9][0-9]*$ ]] || { printf 'JOBS must be a positive integer\n' >&2; exit 1; }
+if [[ "${SKIP_SOURCE_UPDATE:-0}" != 1 ]]; then
+  node "$ROOT/scripts/restore-sources.mjs"
+fi
 mkdir -p "$ROOT/output/logs" "$ROOT/output/cores"
 exec > >(tee "$ROOT/output/logs/$TARGET-$(date +%Y%m%d-%H%M%S).log") 2>&1
 
@@ -54,13 +54,17 @@ load_sdk() {
 }
 
 build_core() {
-  local core="$1" work="$ROOT/work/$1"
+  local core="$1" threaded="${2:-0}" suffix=""
+  [[ "$threaded" == 1 ]] && suffix="-thread"
+  local work="$ROOT/work/$core$suffix"
+  local link_flags=()
+  [[ "$threaded" == 1 ]] && link_flags+=(--threads)
   show_source "$core"
   show_source RetroArch
   (
     cd "$ROOT/compile/$core"
-    emmake make clean platform=emscripten
-    emmake make -j"$JOBS" platform=emscripten
+    emmake make clean platform=emscripten EMULATORJS_THREADS="$threaded"
+    emmake make -j"$JOBS" platform=emscripten EMULATORJS_THREADS="$threaded"
   )
   mkdir -p "$work/RetroArch"
   rsync -a --delete --exclude=.git --exclude='*.o' --exclude='*.a' --exclude='*.bc' \
@@ -71,18 +75,18 @@ build_core() {
   (
     cd "$work/RetroArch/emulatorjs"
     # This script links every .bc in its directory; each core has its own work tree.
-    emmake ./build-emulatorjs.sh --clean
-    emmake ./build-emulatorjs.sh --clean --legacy
+    emmake ./build-emulatorjs.sh --clean "${link_flags[@]}"
+    emmake ./build-emulatorjs.sh --clean --legacy "${link_flags[@]}"
   )
   node "$ROOT/scripts/package-core-wasm.mjs" "$work/EmulatorJS/data/cores" \
-    "$ROOT" "$ROOT/compile/$core" "$ROOT/output/cores" "$core"
+    "$ROOT" "$ROOT/compile/$core" "$ROOT/output/cores" "$core" "${link_flags[@]}"
   {
     printf 'core '; git -C "$ROOT/compile/$core" rev-parse HEAD
     printf 'frontend '; git -C "$ROOT/compile/EmulatorJS" rev-parse HEAD
     printf 'retroarch '; git -C "$ROOT/compile/RetroArch" rev-parse HEAD
     printf 'emscripten 3.1.74\n'
-    sha256sum "$ROOT/output/cores/$core-wasm.data" "$ROOT/output/cores/$core-legacy-wasm.data"
-  } > "$ROOT/output/cores/$core-build.txt"
+    sha256sum "$ROOT/output/cores/$core$suffix-wasm.data" "$ROOT/output/cores/$core$suffix-legacy-wasm.data"
+  } > "$ROOT/output/cores/$core$suffix-build.txt"
 }
 
 if [[ "$TARGET" == frontend || "$TARGET" == all ]]; then build_frontend; fi
@@ -90,9 +94,13 @@ if [[ "$TARGET" != frontend ]]; then
   load_sdk
   if [[ "$TARGET" == all ]]; then
     build_core mame2003_plus
+    build_core mame2003_plus 1
     build_core mednafen_wswan
+  elif [[ "$TARGET" == mame2003_plus-thread ]]; then
+    build_core mame2003_plus 1
   else
     build_core "$TARGET"
+    if [[ "$TARGET" == mame2003_plus ]]; then build_core mame2003_plus 1; fi
   fi
 fi
 printf '\nBuild complete: %s/output\n' "$ROOT"
